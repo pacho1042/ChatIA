@@ -8,11 +8,12 @@ const MAX_CHARS = 500;
 // Modelos de respaldo: verifica que estén disponibles en tu proyecto
 // de Gemini antes de desplegar esta lista.
 const GEMINI_MODELS = [
-  /*'gemini-3.8-flash',
+  'gemini-3.8-flash',
+  'gemini-4-argon',
   'gemini-3.6-flash',
   'gemini-3.5-flash-lite'
-  */
-  'gemini-4-argon'/*,
+ 
+  /*'gemini-4-argon',
   'gemini-2.5-flash',
   'gemini-2.5-pro'*/
 ];
