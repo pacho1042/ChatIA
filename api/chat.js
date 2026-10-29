@@ -8,7 +8,7 @@ const HISTORY_LIMIT = 20;
 const TIMEOUT_MS = 25_000;
 
 // Usa un modelo verificado y disponible en tu proyecto de Gemini.
-const GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
