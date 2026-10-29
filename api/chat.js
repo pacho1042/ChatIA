@@ -1,30 +1,37 @@
-
-
 import { HOMERO_SYSTEM_PROMPT } from '../src/utils.js';
 
+// Límites para controlar el tamaño de las solicitudes.
 const MAX_MESSAGES = 200;
 const MAX_CHARS = 500;
-const HISTORY_LIMIT = 20;
-const TIMEOUT_MS = 25_000;
 
-// Usa un modelo verificado y disponible en tu proyecto de Gemini.
-const GEMINI_MODEL = 'gemini-3.6-flash';
+// Modelos de respaldo: verifica que estén disponibles en tu proyecto
+// de Gemini antes de desplegar esta lista.
+const GEMINI_MODELS = [
+   'gemini-3.6-flash',
+   'gemini-3.5-flash-lite'
+];
 
+/**
+ * Endpoint que recibe el historial del chat y devuelve la respuesta
+ * generada por Gemini con las instrucciones de personalidad de Homero.
+ */
 export default async function handler(req, res) {
+  // Solo se permiten solicitudes POST.
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
+
     return res.status(405).json({
       error: 'Método no permitido. Utiliza POST.'
     });
   }
 
-  const startTime = Date.now();
-
   try {
+    // La clave debe estar configurada como variable de entorno en Vercel.
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
       console.error('Falta configurar GEMINI_API_KEY.');
+
       return res.status(500).json({
         error: 'El servicio de Homero no está configurado correctamente.'
       });
@@ -32,6 +39,7 @@ export default async function handler(req, res) {
 
     const { messages } = req.body ?? {};
 
+    // Comprueba que el historial tenga un tamaño permitido.
     if (
       !Array.isArray(messages) ||
       messages.length === 0 ||
@@ -42,8 +50,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // Validar el historial recibido.
-    const normalizedMessages = [];
+    // Valida los mensajes y los convierte al formato requerido por Gemini.
+    const contents = [];
 
     for (const message of messages) {
       if (
@@ -58,19 +66,18 @@ export default async function handler(req, res) {
         });
       }
 
-      normalizedMessages.push({
+      contents.push({
+        // Gemini utiliza "user" y "model" como roles.
         role: message.role === 'user' ? 'user' : 'model',
         parts: [{ text: message.text.trim() }]
       });
     }
 
-    // El historial debe comenzar con un mensaje del usuario
-    // y alternar entre usuario y asistente.
+    // El historial debe comenzar con el usuario y alternar entre roles.
     if (
-      normalizedMessages[0].role !== 'user' ||
-      normalizedMessages.some((message, index) =>
-        index > 0 &&
-        message.role === normalizedMessages[index - 1].role
+      contents[0].role !== 'user' ||
+      contents.some((message, index) =>
+        index > 0 && message.role === contents[index - 1].role
       )
     ) {
       return res.status(400).json({
@@ -78,135 +85,76 @@ export default async function handler(req, res) {
       });
     }
 
-    // Enviar únicamente los últimos mensajes para reducir
-    // el tiempo de procesamiento y el consumo de tokens.
-    const contents = normalizedMessages
-      .slice(-HISTORY_LIMIT);
-
-    // Si el recorte comienza con una respuesta del modelo,
-    // descartarla para que el historial comience con el usuario.
-    while (contents.length > 0 && contents[0].role !== 'user') {
-      contents.shift();
-    }
-
-    if (contents.length === 0) {
-      return res.status(400).json({
-        error: 'No hay mensajes válidos para enviar a Homero.'
-      });
-    }
-
+    // Las instrucciones del personaje se mantienen en el servidor.
     const requestBody = {
       system_instruction: {
         parts: [{ text: HOMERO_SYSTEM_PROMPT }]
       },
-      contents,
-      generationConfig: {
-        maxOutputTokens: 512
-      }
+      contents
     };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      TIMEOUT_MS
-    );
+    let lastStatus = 503;
 
-    try {
-      const url =
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+    // Intenta cada modelo disponible hasta obtener una respuesta válida.
+    for (const model of GEMINI_MODELS) {
+      let geminiResponse;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      });
+      try {
+        geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(requestBody)
+          }
+        );
+      } catch (error) {
+        // Un fallo de red permite probar el siguiente modelo.
+        console.error(`Error de conexión con ${model}:`, error.message);
+        continue;
+      }
 
-      const data = await response.json().catch(() => null);
+      const data = await geminiResponse.json().catch(() => null);
 
-      if (!response.ok) {
-        console.error('Gemini devolvió un error:', {
-          status: response.status,
-          model: GEMINI_MODEL,
-          durationMs: Date.now() - startTime,
-          details: data?.error?.message
-        });
+      if (geminiResponse.ok) {
+        const reply = data?.candidates?.[0]?.content?.parts
+          ?.map(part => part.text || '')
+          .join('')
+          .trim();
 
-        if (response.status === 429) {
-          return res.status(503).json({
-            error: 'Homero está ocupado. Inténtalo de nuevo en unos segundos.'
-          });
-        }
-
-        if ([401, 403].includes(response.status)) {
+        if (!reply) {
           return res.status(502).json({
-            error: 'No se pudo autenticar la solicitud con Gemini. Revisa la configuración del servidor.'
+            error: 'Homero no devolvió una respuesta válida.'
           });
         }
 
-        if ([500, 502, 503, 504].includes(response.status)) {
-          return res.status(503).json({
-            error: 'Gemini no está disponible en este momento. Inténtalo de nuevo.'
-          });
-        }
-
-        return res.status(502).json({
-          error: 'No fue posible obtener una respuesta de Gemini.'
-        });
+        return res.status(200).json({ reply });
       }
 
-      const reply = data?.candidates?.[0]?.content?.parts
-        ?.map(part => part.text || '')
-        .join('')
-        .trim();
+      lastStatus = geminiResponse.status;
 
-      if (!reply) {
-        console.error('Gemini no devolvió texto:', {
-          durationMs: Date.now() - startTime,
-          finishReason: data?.candidates?.[0]?.finishReason
-        });
+      console.error(`Gemini falló con ${model}:`, {
+        status: geminiResponse.status,
+        details: data
+      });
 
-        return res.status(502).json({
-          error: 'Homero no devolvió una respuesta válida. Inténtalo de nuevo.'
-        });
+      // Solo se prueba otro modelo ante fallos temporales o modelo no encontrado.
+      if (![404, 429, 500, 503].includes(geminiResponse.status)) {
+        break;
       }
-
-      console.info('Respuesta de Gemini completada:', {
-        model: GEMINI_MODEL,
-        durationMs: Date.now() - startTime,
-        inputMessages: contents.length
-      });
-
-      return res.status(200).json({ reply });
-
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.error('Tiempo de espera agotado:', {
-          model: GEMINI_MODEL,
-          timeoutMs: TIMEOUT_MS,
-          durationMs: Date.now() - startTime
-        });
-
-        return res.status(504).json({
-          error: 'Homero está tardando demasiado. Inténtalo de nuevo.'
-        });
-      }
-
-      console.error('Error de conexión con Gemini:', {
-        message: error.message,
-        durationMs: Date.now() - startTime
-      });
-
-      return res.status(502).json({
-        error: 'No se pudo conectar con Gemini. Inténtalo de nuevo.'
-      });
-
-    } finally {
-      clearTimeout(timeout);
     }
+
+    // No se exponen detalles internos de la API al usuario.
+    const status = [400, 401, 403].includes(lastStatus)
+      ? lastStatus
+      : 503;
+
+    return res.status(status).json({
+      error: '¡D’oh! No pude responder ahora. Inténtalo de nuevo.'
+    });
 
   } catch (error) {
     console.error('Error interno en /api/chat:', error);
