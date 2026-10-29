@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Demo sin SPA</title>
+    <link rel="stylesheet" href="/css/styless.css" />
+  </head>
+  <body>
+    
+    <main class="shell">
+      <h1>¡Bienvenido a Springfield!</h1>
+     
+     <nav class="nav" aria-label="Vistas internas">
+        <a href="/" data-route="/" class="nav-link">Inicio</a>
+        <a href="/chat" data-route="/chat" class="nav-link">Chat</a>
+        <a href="/about" data-route="/about" class="nav-link">Acerca de</a>
+      </nav>
+
+      <div id="app" class="card"></div>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
