@@ -2,8 +2,8 @@
 
 Aplicación web de chat en la que el usuario puede conversar con una versión ficticia de **Homero Simpson**. El proyecto separa la interfaz del frontend y el endpoint del backend, y utiliza la API de Gemini para generar las respuestas del personaje.
 
-> 🚀 **Aplicación desplegada:**   colocar el url desplegado
-
+> 🚀 **Aplicación desplegada:**  https://chat-ia-steel.vercel.app/
+>**Evidencia de SPA Desplegada**  https://acesse.one/sxx44ui
 ---
 
 ## 1. 🍩 Descripción del personaje elegido
@@ -59,6 +59,7 @@ ChatIA/
 ├── index.html
 ├── package.json
 ├── package-lock.json
+|___vercel.json
 └── vitest.config.js
 ```
 
@@ -241,7 +242,7 @@ Cuando Vercel termine, abre la URL asignada y verifica:
 4. 🔐 Que `GEMINI_API_KEY` esté configurada.
 5. 📄 Que los registros de Vercel (*Logs*) no indiquen errores.
 
-🌐 **URL pública:** `https://TU-PROYECTO.vercel.app`
+🌐 **URL pública:** `https://chat-ia-steel.vercel.app/`
 
 ---
 
